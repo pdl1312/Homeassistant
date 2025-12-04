@@ -1,0 +1,199 @@
+blueprint:
+  name: VALLHORN Motion Sensor
+  description: >
+    This blueprint controls lights or scenes based on motion detected by the VALLHORN Wireless Motion Sensor.
+
+    Key features:
+    - Turn on lights/scenes when motion is detected.
+    - Optional time slots and luminance level settings.
+    - Sun horizon and elevation adjustments for more granular control.
+    - Wait time for turning off lights after no motion is detected.
+    - Optional scene activation when no motion is detected.
+    - Automation and motion-off blockers for more customization.
+
+  domain: automation
+  source_url: https://github.com/brigger/HomeAssistant_Blueprints/blob/main/advanced_custom_motion_sensor.yaml
+  input:
+    motion_entity:
+      name: Motion Sensor
+      description: Motion sensor or Binary sensor group with Occupancy/Opening sensors.
+      selector:
+        entity:
+          domain: binary_sensor
+          multiple: false
+    light_target:
+      name: Light Target
+      description: Light or switch to control.
+      selector:
+        target:
+          entity:
+            domain: 
+              - light
+              - switch
+    luminance_sensor:
+      name: Illuminance Sensor (Optional)
+      description: Sensor to determine brightness threshold for light activation.
+      selector:
+        entity:
+          domain: sensor
+          device_class: illuminance
+          multiple: false
+    luminance_required:
+      name: Luminance Threshold
+      description: Automation triggers if luminance is below this level.
+      default: 100
+      selector:
+        number:
+          min: 0
+          max: 1000
+          unit_of_measurement: lx
+    no_motion_wait:
+      name: Wait Time
+      description: Time to wait before turning off lights after no motion is detected.
+      default: 120
+      selector:
+        number:
+          min: 0
+          max: 600
+          unit_of_measurement: seconds
+          mode: slider
+          step: 1
+    time_default_start:
+      name: Start Time (Optional)
+      default: "00:00:00"
+      selector:
+        time: {}
+    time_default_end:
+      name: End Time (Optional)
+      default: "00:00:00"
+      selector:
+        time: {}
+    elevation:
+      name: Sun Elevation
+      default: Always
+      selector:
+        select:
+          options:
+            - Always
+            - Below horizon
+            - Above horizon
+    elevation_adjustment:
+      name: Sun Elevation Adjustment
+      description: "Adjust sun position (positive: higher, negative: lower)."
+      default: 0
+      selector:
+        number:
+          min: -90
+          max: 90
+          unit_of_measurement: degrees
+          mode: slider
+          step: 1
+    automation_blocker:
+      name: Automation Blocker (Optional)
+      description: Run only if this entity is in the desired state.
+      selector:
+        entity: {}
+    automation_blocker_boolean:
+      name: Automation Blocker State
+      default: false
+      selector:
+        boolean: {}
+    motion_off_blocker:
+      name: Motion Off Blocker (Optional)
+      description: Block the "off" action if this entity is in the desired state.
+      selector:
+        entity: {}
+    motion_off_blocker_boolean:
+      name: Motion Off Blocker State
+      default: false
+      selector:
+        boolean: {}
+    scene_ambient:
+      name: Ambient Scene (Optional)
+      description: Scene to activate when no motion is detected.
+      default: scene.none
+      selector:
+        entity:
+          domain: scene
+          multiple: false
+    time_scene_ambient_start:
+      name: Ambient Scene Start Time (Optional)
+      default: "00:00:00"
+      selector:
+        time: {}
+    time_scene_ambient_end:
+      name: Ambient Scene End Time (Optional)
+      default: "00:00:00"
+      selector:
+        time: {}
+
+mode: restart
+max_exceeded: silent
+
+trigger:
+  - platform: state
+    entity_id: !input motion_entity
+    from: "off"
+    to: "on"
+  - platform: state
+    entity_id: !input motion_entity
+    from: "on"
+    to: "off"
+    for: !input no_motion_wait
+
+condition:
+  - condition: template
+    value_template: >
+      {% if not is_defined(automation_blocker) %}
+        true
+      {% else %}
+        {{ automation_blocker_boolean == (states[automation_blocker].state == 'on') }}
+      {% endif %}
+  - condition: template
+    value_template: >
+      {% if elevation == 'Always' %}
+        true
+      {% else %}
+        {% set sun_elevation = state_attr('sun.sun', 'elevation') | default(-100) %}
+        {{ (sun_elevation > elevation_adjustment and elevation == 'Above horizon') or
+           (sun_elevation <= elevation_adjustment and elevation == 'Below horizon') }}
+      {% endif %}
+
+action:
+  - choose:
+      - conditions:
+          - condition: template
+            value_template: "{{ trigger.to_state.state == 'on' }}"
+          - condition: numeric_state
+            entity_id: !input luminance_sensor
+            below: !input luminance_required
+        sequence:
+          - condition: time
+            after: !input time_default_start
+            before: !input time_default_end
+          - service: homeassistant.turn_on
+            target: !input light_target
+      - conditions:
+          - condition: template
+            value_template: "{{ trigger.to_state.state == 'off' }}"
+          - condition: template
+            value_template: >
+              {% if not is_defined(motion_off_blocker) %}
+                true
+              {% else %}
+                {{ motion_off_blocker_boolean == (states[motion_off_blocker].state == 'off') }}
+              {% endif %}
+        sequence:
+          - choose:
+              - conditions:
+                  - condition: template
+                    value_template: "{{ scene_ambient != 'scene.none' }}"
+                  - condition: time
+                    after: !input time_scene_ambient_start
+                    before: !input time_scene_ambient_end
+                sequence:
+                  - service: scene.turn_on
+                    entity_id: !input scene_ambient
+            default:
+              - service: homeassistant.turn_off
+                target: !input light_target
