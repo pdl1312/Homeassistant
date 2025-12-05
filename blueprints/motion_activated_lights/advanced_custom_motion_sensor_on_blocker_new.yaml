@@ -1,8 +1,8 @@
 blueprint:
   name: Advanced Custom Motion Sensor (ON/OFF Blocker) new
   description: >
-    Modified version of advanced motion sensor. Blocks motion ON and OFF using input_boolean.
-    ON and OFF are both blocked if the input_boolean is ON.
+    Modified version of advanced motion sensor. Blocks motion ON and OFF
+    using input_boolean. ON and OFF are both blocked if the input_boolean is ON.
   domain: automation
   input:
     motion_entity:
@@ -96,8 +96,10 @@ blueprint:
       default: "00:00:00"
       selector:
         time: {}
+
 mode: restart
 max_exceeded: silent
+
 variables:
   scene_ambient: !input scene_ambient
   automation_blocker: !input automation_blocker
@@ -107,6 +109,7 @@ variables:
   motion_entity: !input motion_entity
   luminance_sensor: !input luminance_sensor
   luminance_required: !input luminance_required
+
 trigger:
   - platform: state
     entity_id: !input motion_entity
@@ -117,6 +120,7 @@ trigger:
     from: "on"
     to: "off"
     for: !input no_motion_wait
+
 action:
   - choose:
       - conditions:
@@ -145,6 +149,7 @@ action:
             before: !input time_default_end
           - service: light.turn_on
             target: !input light_target
+
       - conditions:
           - condition: template
             value_template: "{{ trigger.to_state.state == 'off' }}"
