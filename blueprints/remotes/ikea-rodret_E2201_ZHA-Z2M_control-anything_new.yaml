@@ -18,7 +18,6 @@ blueprint:
     "
   source_url: https://gist.github.com/damru/b2c1c780ffb0ddc084952eb89db9573a
   domain: automation
-  spec_version: 2
   input:
     remote_device:
       name: (ZHA) Remote
