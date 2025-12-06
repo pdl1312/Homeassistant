@@ -1,0 +1,136 @@
+blueprint:
+  name: ZHA - IKEA Somrig remote dot-buttons control patched
+  description: >
+    Fully customisable dot-buttons, with options for single, double and
+    long press for each one.
+
+  domain: automation
+
+  input:
+    remote:
+      name: Remote
+      description: IKEA Somrig remote to use
+      selector:
+        device:
+          integration: zha
+          manufacturer: IKEA of Sweden
+          model: SOMRIG shortcut button
+          multiple: false
+
+    single_dot_single_press:
+      name: Single dot (Single press)
+      description: Action to run on single dot press
+      default: []
+      selector:
+        action: {}
+
+    single_dot_double_press:
+      name: Single dot (Double press)
+      description: Action to run on single dot double press
+      default: []
+      selector:
+        action: {}
+
+    single_dot_long_press:
+      name: Single dot (Long press)
+      description: Action to run on single dot long press
+      default: []
+      selector:
+        action: {}
+
+    single_dot_long_release:
+      name: Single dot (Release after long press)
+      description: Action to run on releasing after a long press on the single dot
+      default: []
+      selector:
+        action: {}
+
+    double_dot_single_press:
+      name: Double dot (Single press)
+      description: Action to run on double dot press
+      default: []
+      selector:
+        action: {}
+
+    double_dot_double_press:
+      name: Double dot (Double press)
+      description: Action to run on double dot double press
+      default: []
+      selector:
+        action: {}
+
+    double_dot_long_press:
+      name: Double dot (Long press)
+      description: Action to run on double dot long press
+      default: []
+      selector:
+        action: {}
+
+    double_dot_long_release:
+      name: Double dot (Release after long press)
+      description: Action to run on releasing after a long press on the double dot
+      default: []
+      selector:
+        action: {}
+
+  source_url: https://community.home-assistant.io/t/ikea-somrig-remote-e2213-zha/668671
+
+mode: restart
+max_exceeded: silent
+
+trigger_variables:
+  remote_device: !input remote
+
+trigger:
+  - platform: event
+    event_type: zha_event
+    event_data:
+      device_id: "{{ remote_device }}"
+
+action:
+  - variables:
+      command: "{{ trigger.event.data.command | default('') }}"
+      endpoint_id: "{{ trigger.event.data.endpoint_id | int(0) }}"
+
+  - choose:
+      # --- Single dot ---
+      - conditions:
+          - "{{ endpoint_id == 1 }}"
+          - "{{ command == 'short_release' }}"
+        sequence: !input single_dot_single_press
+
+      - conditions:
+          - "{{ endpoint_id == 1 }}"
+          - "{{ command == 'multi_press_complete' }}"
+        sequence: !input single_dot_double_press
+
+      - conditions:
+          - "{{ endpoint_id == 1 }}"
+          - "{{ command == 'long_press' }}"
+        sequence: !input single_dot_long_press
+
+      - conditions:
+          - "{{ endpoint_id == 1 }}"
+          - "{{ command == 'long_release' }}"
+        sequence: !input single_dot_long_release
+
+      # --- Double dot ---
+      - conditions:
+          - "{{ endpoint_id == 2 }}"
+          - "{{ command == 'short_release' }}"
+        sequence: !input double_dot_single_press
+
+      - conditions:
+          - "{{ endpoint_id == 2 }}"
+          - "{{ command == 'multi_press_complete' }}"
+        sequence: !input double_dot_double_press
+
+      - conditions:
+          - "{{ endpoint_id == 2 }}"
+          - "{{ command == 'long_press' }}"
+        sequence: !input double_dot_long_press
+
+      - conditions:
+          - "{{ endpoint_id == 2 }}"
+          - "{{ command == 'long_release' }}"
+        sequence: !input double_dot_long_release
