@@ -1,0 +1,296 @@
+blueprint:
+  name: Advanced Custom Motion Sensor New patched
+  description: >
+    Advanced motion blueprint v1.1
+
+    This motion sensor is based on several ideas from other blueprints, and adds
+    a number of customizations.
+
+    Inputs and actions are:
+    - Turn on lights or scenes when motion is detected. The trigger can be a motion
+      detector or anything that switches between ON and OFF. You can use a motion
+      detector or a group.
+    - The activation can be triggered between a certain time slot (so the bathroom
+      light does not turn on in the middle of the night)
+    - You can specify a luminance value: only run when it is darker than indicated
+    - Luminance condition can be enabled/disabled
+    - Sun horizon setting: you can run the action always, or only when the sun is
+      above or below the horizon
+    - You can adjust the horizon by giving an elevation adjustment number
+    - Wait time for turning off
+    - Only run if an optional entity is in desired state (optional)
+    - Default scene when motion stops (optional)
+    - Only run the motion off action if an optional entity is in desired state
+    - Ambient scene with optional time window
+
+  domain: automation
+  source_url: https://raw.githubusercontent.com/pdl1312/Homeassistant/main/blueprints/motion_activated_lights/advanced_custom_motion_sensor_new.yaml
+
+  input:
+    motion_entity:
+      name: Motion Sensor
+      description: Motion Sensor or a group with Motion Sensors (or anything switching between "on" and "off")
+      selector:
+        entity:
+          multiple: true
+
+    light_target:
+      name: Light
+      selector:
+        target:
+          entity:
+            domain:
+              - light
+              - switch
+
+    luminance_sensor:
+      name: Illuminance sensor
+      description: This sensor will be used to determine the illumination.
+      default:
+      selector:
+        entity:
+          domain: sensor
+          device_class: illuminance
+          multiple: false
+
+    use_luminance:
+      name: Use luminance condition
+      description: If off, the automation will ignore the lux level.
+      default: true
+      selector:
+        boolean: {}
+
+    luminance_required:
+      name: Required Lux Level
+      description: Lux level below which the automation will run.
+      default: 100
+      selector:
+        number:
+          min: 0
+          max: 1000
+          unit_of_measurement: lx
+
+    no_motion_wait:
+      name: Wait time
+      description: Time to leave the light on after last motion is detected.
+      default: 120
+      selector:
+        number:
+          min: 0.0
+          max: 600.0
+          unit_of_measurement: seconds
+          mode: slider
+          step: 1.0
+
+    use_active_time:
+      name: Restrict motion-on to a time range
+      description: If on, motion will only turn on lights between the times below.
+      default: false
+      selector:
+        boolean: {}
+
+    time_default_start:
+      name: Only run default action after this time (Optional)
+      description: Default Light target will only run when time is later than this value (if restriction is enabled).
+      default: "00:00:00"
+      selector:
+        time: {}
+
+    time_default_end:
+      name: Only run default action before this time (Optional)
+      description: Default Light target will only run when time is earlier than this value (if restriction is enabled).
+      default: "00:00:00"
+      selector:
+        time: {}
+
+    elevation:
+      name: Elevation
+      description: Choose whether to check if the sun is above, below the horizon, or always trigger the action
+      default: Always
+      selector:
+        select:
+          options:
+            - Always
+            - Below horizon
+            - Above horizon
+
+    elevation_adjustment:
+      name: Sun elevation adjustment (Optional)
+      description: >
+        With a positive number, the sun is considered further above the horizon. For instance,
+        +10 approximately means the trigger will activate one hour before the sun is below horizon.
+        A negative number moves the trigger further below the horizon.
+      default: 0
+      selector:
+        number:
+          min: -90.0
+          max: 90.0
+          unit_of_measurement: degrees
+          mode: slider
+          step: 1.0
+
+    automation_blocker:
+      name: Automation Blocker (Optional)
+      description: Only run if this entity is in desired state (see next input)
+      default:
+      selector:
+        entity: {}
+
+    automation_blocker_boolean:
+      name: Automation Blocker Chooser (Optional)
+      description: Desired state of automation blocker (on = ON, off = OFF)
+      default: false
+      selector:
+        boolean: {}
+
+    motion_off_blocker:
+      name: Motion Off Blocker (Optional)
+      description: >
+        Motion off sequence (trigger goes from ON to OFF) is not run if this entity is in desired state
+        (see next input).
+      default:
+      selector:
+        entity: {}
+
+    motion_off_blocker_boolean:
+      name: Motion Off Chooser (Optional)
+      description: Desired state of motion off blocker
+      default: false
+      selector:
+        boolean: {}
+
+    scene_ambient:
+      name: Ambient Scene (Optional)
+      description: Scene for ambient state. Will be activated when no motion is detected.
+      default: scene.none
+      selector:
+        entity:
+          domain:
+            - scene
+          multiple: false
+
+    use_ambient_time:
+      name: Restrict ambient scene to time range
+      description: If on, ambient scene will only be activated between the times below.
+      default: false
+      selector:
+        boolean: {}
+
+    time_scene_ambient_start:
+      name: Ambient time frame start (Optional)
+      description: Time from which on ambient scene will be activated (if restriction is enabled).
+      default: "00:00:00"
+      selector:
+        time: {}
+
+    time_scene_ambient_end:
+      name: Ambient time frame end (Optional)
+      description: Time from which on ambient scene will not be activated (if restriction is enabled).
+      default: "00:00:00"
+      selector:
+        time: {}
+
+mode: restart
+max_exceeded: silent
+
+variables:
+  scene_ambient: !input scene_ambient
+  automation_blocker: !input automation_blocker
+  automation_blocker_boolean: !input automation_blocker_boolean
+  motion_off_blocker: !input motion_off_blocker
+  motion_off_blocker_boolean: !input motion_off_blocker_boolean
+  elevation: !input elevation
+  elevation_adjustment: !input elevation_adjustment
+  motion_entity: !input motion_entity
+  luminance_sensor: !input luminance_sensor
+  luminance_required: !input luminance_required
+  use_luminance: !input use_luminance
+  use_active_time: !input use_active_time
+  use_ambient_time: !input use_ambient_time
+
+trigger:
+  - platform: state
+    entity_id: !input motion_entity
+    from: "off"
+    to: "on"
+
+  - platform: state
+    entity_id: !input motion_entity
+    from: "on"
+    to: "off"
+    for: !input no_motion_wait
+
+condition:
+  - condition: or
+    conditions:
+      - "{{ automation_blocker == none }}"
+      - "{{ automation_blocker_boolean and states[automation_blocker].state == 'on' }}"
+      - "{{ not automation_blocker_boolean and states[automation_blocker].state == 'off' }}"
+
+  - condition: template
+    value_template: >
+      {% if elevation == 'Always' %}
+        true
+      {% else %}
+        {% set sun_elevation = state_attr('sun.sun', 'elevation') %}
+        {% if sun_elevation is none %}
+          false
+        {% else %}
+          {% set adj = elevation_adjustment | float(0) %}
+          {% if elevation == 'Above horizon' %}
+            {{ sun_elevation > adj }}
+          {% else %}
+            {{ sun_elevation <= adj }}
+          {% endif %}
+        {% endif %}
+      {% endif %}
+
+action:
+  - choose:
+      # Motion ON branch
+      - conditions:
+          - condition: template
+            value_template: "{{ trigger.to_state.state == 'on' }}"
+          - condition: template
+            value_template: >
+              {% if not use_luminance %}
+                true
+              {% elif luminance_sensor in [none, ''] %}
+                true
+              {% else %}
+                {{ states(luminance_sensor) | float(0) < (luminance_required | float(0)) }}
+              {% endif %}
+        sequence:
+          - condition: or
+            conditions:
+              - "{{ not use_active_time }}"
+              - condition: time
+                after: !input time_default_start
+                before: !input time_default_end
+          - service: light.turn_on
+            target: !input light_target
+
+      # Motion OFF branch
+      - conditions:
+          - condition: template
+            value_template: "{{ trigger.to_state.state == 'off' }}"
+          - condition: or
+            conditions:
+              - "{{ motion_off_blocker == none }}"
+              - "{{ motion_off_blocker_boolean and states[motion_off_blocker].state == 'on' }}"
+              - "{{ not motion_off_blocker_boolean and states[motion_off_blocker].state == 'off' }}"
+        sequence:
+          - choose:
+              - conditions:
+                  - "{{ scene_ambient != 'scene.none' }}"
+                  - condition: or
+                    conditions:
+                      - "{{ not use_ambient_time }}"
+                      - condition: time
+                        after: !input time_scene_ambient_start
+                        before: !input time_scene_ambient_end
+                sequence:
+                  - scene: !input scene_ambient
+            default:
+              - service: light.turn_off
+                target: !input light_target
