@@ -1,5 +1,5 @@
 blueprint:
-  name: ZHA - IKEA Somrig remote dot-buttons control
+  name: ZHA - IKEA Somrig remote dot-buttons control new
   description:
     Fully customisable dot-buttons, with options for single, double and
     long press for each one.
