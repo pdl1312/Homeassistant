@@ -1,0 +1,228 @@
+blueprint:
+  name: IKEA Rodret Dimmer Light Control patched
+  description: >
+    ## Control a light with IKEA RODRET Dimmer remote (ZHA only, v1.1)
+
+    Only for use with [ZHA](https://www.home-assistant.io/integrations/zha/).
+
+    Available controls:
+
+    - Press the **on** button to turn on the light
+      (Optional: set the target brightness by enabling **Helper - Force Brightness**
+      and setting a **Helper - Brightness** value)
+
+    - Press the **off** button to turn off the light
+
+    - Press and hold the **on** button to increase the brightness
+
+    - Press and hold the **off** button to decrease the brightness
+      (brightness is stepped down; if you go near minimum, it snaps to 1%)
+  domain: automation
+
+  source_url: https://gist.github.com/damru/19ac1c8530cf744595a9e239cf5bb20f
+
+  input:
+    remote_device:
+      name: (ZHA) Remote
+      description: IKEA RODRET Dimmer remote to use. **Only ZHA is supported in this version.**
+      default: ""
+      selector:
+        device:
+          filter:
+            integration: zha
+            manufacturer: IKEA of Sweden
+            model: RODRET Dimmer
+          multiple: false
+
+    light:
+      name: Light
+      description: Light to control
+      selector:
+        entity:
+          filter:
+            domain: light
+          multiple: false
+
+    helper_force_brightness:
+      name: Helper - Force brightness
+      description: Force the brightness to the value below when the light turns on.
+      default: false
+      selector:
+        boolean: {}
+
+    helper_brightness:
+      name: Helper - Brightness
+      description: >
+        Target light brightness when turning on. Requires **Helper - Force brightness**
+        to be enabled.
+      default: 50
+      selector:
+        number:
+          unit_of_measurement: "%"
+          min: 1.0
+          max: 100.0
+          step: 1.0
+          mode: slider
+
+mode: restart
+max_exceeded: silent
+
+trigger_variables:
+  zha_controller: !input remote_device
+
+variables:
+  helper_force_brightness: !input helper_force_brightness
+  helper_brightness: !input helper_brightness
+  light: !input light
+  zha_controller: !input remote_device
+
+trigger:
+  # ON press
+  - platform: event
+    event_type: zha_event
+    event_data:
+      device_id: "{{ zha_controller }}"
+      command: "on"
+    id: press-on-zha
+
+  # OFF press
+  - platform: event
+    event_type: zha_event
+    event_data:
+      device_id: "{{ zha_controller }}"
+      command: "off"
+    id: press-off-zha
+
+  # ON hold (brightness up)
+  - platform: event
+    event_type: zha_event
+    event_data:
+      device_id: "{{ zha_controller }}"
+      command: "move_with_on_off"
+    id: hold-on-zha
+
+  # OFF hold (brightness down)
+  - platform: event
+    event_type: zha_event
+    event_data:
+      device_id: "{{ zha_controller }}"
+      command: "move"
+    id: hold-off-zha
+
+action:
+  - choose:
+      # --- ON button pressed ---
+      - conditions:
+          - condition: trigger
+            id:
+              - press-on-zha
+        sequence:
+          - choose:
+              - conditions:
+                  - condition: template
+                    value_template: "{{ helper_force_brightness }}"
+                sequence:
+                  - service: light.turn_on
+                    target:
+                      entity_id: !input light
+                    data:
+                      transition: 1
+                      brightness_pct: !input helper_brightness
+            default:
+              - service: light.turn_on
+                target:
+                  entity_id: !input light
+                data:
+                  transition: 1
+
+      # --- OFF button pressed ---
+      - conditions:
+          - condition: trigger
+            id:
+              - press-off-zha
+        sequence:
+          - service: light.turn_off
+            target:
+              entity_id: !input light
+            data:
+              transition: 1
+
+      # --- ON hold (brightness up) ---
+      - conditions:
+          - condition: trigger
+            id:
+              - hold-on-zha
+        sequence:
+          - repeat:
+              # safety cap: at most 50 steps per hold
+              count: 50
+              sequence:
+                - parallel:
+                    - service: light.turn_on
+                      target:
+                        entity_id: !input light
+                      data:
+                        # Increase brightness by 5% per step
+                        brightness_step_pct: 5
+                    - sequence:
+                        - wait_for_trigger:
+                            - platform: event
+                              event_type: zha_event
+                              event_data:
+                                device_id: "{{ zha_controller }}"
+                                command: "stop_with_on_off"
+                          timeout:
+                            seconds: 0.2
+                          continue_on_timeout: true
+                        - if:
+                            - condition: template
+                              value_template: "{{ wait.trigger is not none }}"
+                          then:
+                            - stop: button released
+
+      # --- OFF hold (brightness down) ---
+      - conditions:
+          - condition: trigger
+            id:
+              - hold-off-zha
+        sequence:
+          - repeat:
+              # safety cap: at most 50 steps per hold
+              count: 50
+              sequence:
+                - parallel:
+                    - service: light.turn_on
+                      target:
+                        entity_id: !input light
+                      data:
+                        # Decrease brightness by 5% per step
+                        brightness_step_pct: -5
+                    - sequence:
+                        - wait_for_trigger:
+                            - platform: event
+                              event_type: zha_event
+                              event_data:
+                                device_id: "{{ zha_controller }}"
+                                command: "stop_with_on_off"
+                          timeout:
+                            seconds: 0.2
+                          continue_on_timeout: true
+                        - if:
+                            - condition: template
+                              value_template: "{{ wait.trigger is not none }}"
+                          then:
+                            - stop: button released
+          # After dimming, if we're very low but still on, snap to 1%
+          - choose:
+              - conditions:
+                  - condition: template
+                    value_template: >
+                      {% set b = state_attr(light, 'brightness') | int(0) %}
+                      {% set pct = (b * 100 / 255) | float(0) %}
+                      {{ b > 0 and pct > 0 and pct < 5 }}
+                sequence:
+                  - service: light.turn_on
+                    target:
+                      entity_id: !input light
+                    data:
+                      brightness_pct: 1
