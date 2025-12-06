@@ -1,5 +1,5 @@
 blueprint:
-  name: ZHA - IKEA four button remote for lights
+  name: ZHA - IKEA four button remote for lights new
   description: 'Control lights with an IKEA four button remote (the square ones),
     for use with [ZHA](https://www.home-assistant.io/integrations/zha/).
 
